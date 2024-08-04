@@ -8,7 +8,7 @@ This project implements a sophisticated chatbot that uses a multi-tiered approac
 ## Components
 
 1. **main.js**: Primary script for handling larger prompts and complex matching logic.
-2. **query.js** (aka "Small Query.js"): Secondary script for processing smaller queries.
+2. **Small Query.js**: Secondary script for processing smaller queries.
 3. **LLM Integration**: Handles unknown queries and expands the chatbot's knowledge base.
 
 ## Workflow
