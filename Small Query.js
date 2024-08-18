@@ -1,7 +1,7 @@
 // File name for storing sentences
 const fileName = "intents.json";
 
-// Default sentences
+// Default sentences (unchanged)
 const defaultSentences = [
     { sentence: "Hello, how are you? Hi, how are you? Hello, how's it going? Hey, how are you doing?", response: "I'm just a chatbot, but I'm here to help you! How can I assist you today?" },
     { sentence: "What's the weather like today? How's the weather? Can you tell me the weather? What's the weather forecast?", response: "I can't check the weather right now, but you can use a weather app or website for the latest updates." },
@@ -9,7 +9,7 @@ const defaultSentences = [
     // ... (other default sentences)
 ];
 
-// Try to load sentences from file, or use defaults
+// Load sentences from file or use defaults (unchanged)
 let sentences;
 try {
     const fileContent = tk.readFile(fileName);
@@ -17,39 +17,55 @@ try {
     tk.flash("Sentences loaded from file");
 } catch (error) {
     tk.flash("Error reading file or file doesn't exist. Using default sentences.");
-    sentences = defaultSentences.slice(); // Use a copy of the default sentences
+    sentences = defaultSentences.slice();
 }
 
-// Function to calculate word similarity
+// Improved word similarity function using Levenshtein distance
 function calculateSimilarity(word1, word2) {
     if (word1 === word2) return 1;
     if (word1.length < 2 || word2.length < 2) return 0;
-    
-    // Check for common prefixes
-    if (word1.startsWith(word2) || word2.startsWith(word1)) {
-        return 0.8;
+
+    const len1 = word1.length;
+    const len2 = word2.length;
+    const matrix = Array(len2 + 1).fill().map(() => Array(len1 + 1).fill(0));
+
+    for (let i = 0; i <= len1; i++) matrix[0][i] = i;
+    for (let j = 0; j <= len2; j++) matrix[j][0] = j;
+
+    for (let j = 1; j <= len2; j++) {
+        for (let i = 1; i <= len1; i++) {
+            const cost = word1[i - 1] === word2[j - 1] ? 0 : 1;
+            matrix[j][i] = Math.min(
+                matrix[j][i - 1] + 1,
+                matrix[j - 1][i] + 1,
+                matrix[j - 1][i - 1] + cost
+            );
+        }
     }
-    
-    // Check for simple edit distance (very basic implementation)
-    const maxLength = Math.max(word1.length, word2.length);
-    let sameChars = 0;
-    for (let i = 0; i < Math.min(word1.length, word2.length); i++) {
-        if (word1[i] === word2[i]) sameChars++;
-    }
-    return sameChars / maxLength;
+
+    const distance = matrix[len2][len1];
+    const maxLength = Math.max(len1, len2);
+    return 1 - distance / maxLength;
 }
 
+// Function to preprocess text
+function preprocessText(text) {
+    return text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
+}
+
+// Improved conversational analyzer
 const conversationalAnalyzer = (input, threshold) => {
-    const inputWords = input.toLowerCase().split(/\s+/);
+    const inputWords = preprocessText(input);
     const results = [];
 
     for (const entry of sentences) {
-        const sentenceVariants = entry.sentence.toLowerCase().split('?');
+        const sentenceVariants = entry.sentence.split('?');
         let bestMatchPercentage = 0;
 
         for (const variant of sentenceVariants) {
-            const variantWords = variant.trim().split(/\s+/);
+            const variantWords = preprocessText(variant);
             let totalSimilarity = 0;
+            let matchedWords = 0;
 
             for (const inputWord of inputWords) {
                 let maxSimilarity = 0;
@@ -59,10 +75,17 @@ const conversationalAnalyzer = (input, threshold) => {
                         maxSimilarity = similarity;
                     }
                 }
+                if (maxSimilarity > 0.7) {  // Consider a word matched if similarity is above 0.7
+                    matchedWords++;
+                }
                 totalSimilarity += maxSimilarity;
             }
 
-            const matchPercentage = (totalSimilarity / inputWords.length) * 100;
+            // Calculate match percentage based on both word similarity and matched word count
+            const similarityScore = totalSimilarity / inputWords.length;
+            const matchedWordsScore = matchedWords / inputWords.length;
+            const matchPercentage = (similarityScore * 0.6 + matchedWordsScore * 0.4) * 100;
+
             if (matchPercentage > bestMatchPercentage) {
                 bestMatchPercentage = matchPercentage;
             }
@@ -78,31 +101,22 @@ const conversationalAnalyzer = (input, threshold) => {
     }
 
     if (results.length === 0) {
-        return "I'm not quite sure how to respond to that. Trying to learn it so I know how to respond in the future.";
+        return "I'm not quite sure how to respond to that. I'm always learning to improve my responses.";
     }
 
     // Sort results by match percentage in descending order
     results.sort((a, b) => b.matchPercentage - a.matchPercentage);
 
-    // Construct a paragraph of responses
-    let outputParagraph = "";
-    results.forEach((result, index) => {
-        if (index > 0) {
-            outputParagraph += index === results.length - 1 ? " Finally, " : " Additionally, ";
-        }
-        outputParagraph += result.response;
-    });
-
-    return outputParagraph.trim() + ".";
+    // Return the best match
+    return results[0].response;
 };
 
 // Example usage
-// Example usage:
 const inputText = global("USERQUERY");
-const threshold = 80;
+const threshold = 90;  // Adjusted threshold to be more strict
 
-const result = conversationalAnalyzer(input, threshold);
-setGlobal("BOTRESPONSE",result);
-if(result=="I'm not quite sure how to respond to that. Trying to learn it so I know how to respond in the future."){
-setGlobal("unknownInput",result)
+const result = conversationalAnalyzer(inputText, threshold);
+setGlobal("BOTRESPONSE", result);
+if (result === "I'm not quite sure how to respond to that. I'm always learning to improve my responses.") {
+    setGlobal("unknownInput", inputText);
 }
